@@ -1,0 +1,137 @@
+name: JusITOS AArch64 framebuffer splash and clean poweroff
+
+on:
+  push:
+    paths:
+      - '.github/workflows/jusitos-freebsd14-aarch64.yml'
+      - 'scripts/**'
+      - 'src/**'
+      - 'rootfs/**'
+  pull_request:
+    paths:
+      - '.github/workflows/jusitos-freebsd14-aarch64.yml'
+      - 'scripts/**'
+      - 'src/**'
+      - 'rootfs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jusitos-splash-poweroff-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build FreeBSD 14.2 AArch64 image
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out JusITOS
+        uses: actions/checkout@v4
+
+      - name: Cross-build on FreeBSD 14.2 x86_64
+        uses: vmactions/freebsd-vm@v1.5.9
+        with:
+          release: '14.2'
+          arch: x86_64
+          mem: 5120
+          cpu: 2
+          sync: rsync
+          copyback: true
+          prepare: |
+            pkg install -y bash git
+          run: |
+            set -eu
+            build_root="$(mktemp -d /tmp/jusitos-ci.XXXXXX)"
+            trap 'rm -rf "$build_root"' EXIT HUP INT TERM
+            project="$build_root/JusITOS"
+            mkdir -p "$project"
+            tar -C "$GITHUB_WORKSPACE" --exclude=.git --exclude=ci-artifacts -cf - . | tar -C "$project" -xf -
+
+            printf 'FreeBSD VM: '
+            freebsd-version -r
+            printf 'Build host architecture: '
+            uname -m
+            case "$(freebsd-version -r)" in
+              14.2-RELEASE*) ;;
+              *) echo "Expected FreeBSD 14.2, got $(freebsd-version -r)" >&2; exit 1 ;;
+            esac
+
+            # Cross-link the replacement init against the matching FreeBSD 14.2
+            # AArch64 base sysroot, then run the repository's full FreeBSD image builder.
+            sysroot="$build_root/aarch64-sysroot"
+            mkdir -p "$sysroot"
+            fetch -o "$build_root/base.txz" \
+              https://archive.freebsd.org/old-releases/arm64/aarch64/14.2-RELEASE/base.txz
+            tar -xpf "$build_root/base.txz" -C "$sysroot"
+            JUSIT_SYSROOT="$sysroot" "$project/scripts/build_init.sh"
+
+            if [ "$(id -u)" -eq 0 ]; then
+              JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
+            else
+              sudo -n env JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
+            fi
+            test -s "$project/build/jusitos-0.0.1.img"
+            mkdir -p "$GITHUB_WORKSPACE/ci-artifacts"
+            cp "$project/build/jusitos-0.0.1.img" "$GITHUB_WORKSPACE/ci-artifacts/"
+
+      - name: Move image outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jusitos-image"
+          mv "$GITHUB_WORKSPACE/ci-artifacts/jusitos-0.0.1.img" "$RUNNER_TEMP/jusitos-image/"
+          rmdir "$GITHUB_WORKSPACE/ci-artifacts"
+
+      - name: Upload boot image for the QEMU job
+        uses: actions/upload-artifact@v4
+        with:
+          name: jusitos-aarch64-image
+          path: ${{ runner.temp }}/jusitos-image/jusitos-0.0.1.img
+          if-no-files-found: error
+          retention-days: 7
+
+  splash_and_poweroff:
+    name: Verify framebuffer splash and clean poweroff in AArch64 QEMU TCG
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out boot harness
+        uses: actions/checkout@v4
+
+      - name: Install QEMU and AArch64 UEFI firmware
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes qemu-system-arm qemu-efi-aarch64
+
+      - name: Download the AArch64 image
+        uses: actions/download-artifact@v4
+        with:
+          name: jusitos-aarch64-image
+          path: ${{ runner.temp }}/jusitos-image
+
+      - name: Run QEMU and require framebuffer splash plus clean guest poweroff
+        run: |
+          mkdir -p "$RUNNER_TEMP/jusitos-qemu"
+          python3 scripts/ci_qemu_boot.py \
+            --image "$RUNNER_TEMP/jusitos-image/jusitos-0.0.1.img" \
+            --uefi-code /usr/share/AAVMF/AAVMF_CODE.fd \
+            --uefi-vars /usr/share/AAVMF/AAVMF_VARS.fd \
+            --log "$RUNNER_TEMP/jusitos-qemu/serial.log" \
+            --boot-timeout 900 \
+            --shutdown-timeout 120 \
+            --serial-shutdown-grace 2
+
+      - name: Upload QEMU serial and emulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jusitos-splash-poweroff-qemu-logs
+          path: |
+            ${{ runner.temp }}/jusitos-qemu/serial.log
+            ${{ runner.temp }}/jusitos-qemu/qemu.stderr.log
+          if-no-files-found: warn
+          retention-days: 14

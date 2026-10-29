@@ -1,174 +1,96 @@
 # JusITOS 0.0.1
 
-A FreeBSD-derived ARM64 game-console operating system. Target: small, fast-booting, framebuffer-only console that boots a splash screen and reads input. QEMU is the primary test platform.
+A FreeBSD-derived ARM64 game-console OS prototype. The intended v0.0.1 experience is a fast-booting console with a splash screen and keyboard input. QEMU's `virt` machine is the development target.
 
-> Lineage: FreeBSD 14.2-RELEASE → stripped console profile → custom kernel + custom init = **JusITOS 0.0.1**.
-> This follows the same pattern Sony used for Orbis OS (PS4) and Prospero (PS5), both of which are FreeBSD-derived.
+> Source baseline: FreeBSD `releng/14.2`, plus the JusITOS kernel configuration and init program.
 
----
+## Current implementation status
 
-## What's in 0.0.1
+| Piece | Status | Location |
+|---|---|---|
+| Custom AArch64 kernel config | Updated; not yet built | `src/sys/arm64/conf/JusITOS-ARM64` |
+| Splash/init program | Host syntax checked; target runtime unverified | `src/init/jusit_init.c` |
+| FreeBSD source, kernel, and world build | Scripted for a FreeBSD host; not yet run | `scripts/build.sh` |
+| UEFI raw image | GPT/ESP/UFS assembly mock-tested; guest boot unverified | `scripts/build.sh` |
+| QEMU launcher | Arguments mock-tested; guest boot unverified | `scripts/run_qemu.sh` |
+| Device-tree fragment | Informational; not passed by the runner | `src/devtree/jusit-virt.dts` |
 
-| Piece                          | Status      | File / location                          |
-|--------------------------------|-------------|------------------------------------------|
-| Custom AArch64 kernel config   | ✅ written  | `src/sys/arm64/conf/JusITOS-ARM64`       |
-| Splash / init binary           | ✅ written  | `src/init/jusit_init.c`                   |
-| Build script (src + image)     | ✅ written  | `scripts/build.sh`                       |
-| Init binary builder            | ✅ written  | `scripts/build_init.sh`                   |
-| QEMU launcher                   | ✅ written  | `scripts/run_qemu.sh`                     |
-| Device-tree fragment           | ✅ written  | `src/devtree/jusit-virt.dts`              |
-| Boot to splash screen          | 🎯 target  | Once you actually build + run             |
-| Keypress echo on framebuffer   | 🎯 target  | Once you actually build + run             |
+The splash supports a narrow UEFI framebuffer target: init requires `FBTYPE_EFIFB` at 32-bit depth, reads the scanline width with `FBIO_GETLINEWIDTH`, and queries RGB shifts with `FBIO_GETRGBOFFS` on `/dev/ttyv0`. The current pixel layout must report R=16, G=8, and B=0; other framebuffer types, depths, or channel layouts are not supported. When the EFI framebuffer is missing or unsupported, init falls back to `/dev/console`, the system-selected console, which may be serial. As PID 1, init opens `/dev/console` on file descriptors 0, 1, and 2 in raw mode. Ctrl+D is the byte `0x04` and requests poweroff with `RB_POWEROFF`. The font fallback and glyphs are visible when rendered.
 
-### What 0.0.1 does NOT do (by design)
+## Build host and prerequisites
 
-- No GPU acceleration (framebuffer only)
-- No audio
-- No real gamepad driver (keyboard-as-input for now)
-- No networking (driver is built, not used yet)
-- No game loader (one splash screen)
-- No UEFI secure boot
+The full `scripts/build.sh` image build requires a **FreeBSD 14.2-or-newer host** and root privileges. The build target is `arm64/aarch64`; it can be built natively on FreeBSD/arm64 or cross-built from FreeBSD/amd64 with the FreeBSD toolchain. The script uses FreeBSD-specific `mdconfig`, `gpart`, `newfs_msdos`, and `mount` commands, so **Linux is not supported for the full build/image step**.
 
-These come in later milestones (see roadmap below).
+Linux or another Clang host can build only the standalone init executable when given a matching FreeBSD 14.2 arm64 sysroot. That does not make the full image builder Linux-compatible; transfer the resulting `build/jusit-init` to the FreeBSD build host before running `build.sh`.
 
----
-
-## Prerequisites
-
-You need **one** of these build hosts:
-
-1. **FreeBSD 13.4+ or 14.x arm64 host** (preferred — easiest path)
-2. **FreeBSD VM** on your dev box (e.g., UTM on macOS, bhyve on Linux)
-3. **Linux host with a FreeBSD arm64 cross-toolchain** — more work, see `scripts/build_init.sh` notes
-
-Plus:
-
-- ~10 GB free disk (for src + objtree)
-- `git`, `make`, `cc` (clang preferred)
-- `qemu-system-aarch64` (for running the image)
-- `dtc` (device tree compiler, optional — `apt install device-tree-compiler`)
-
----
+You will also need Git, `make`, Clang/C compiler tools, roughly 10 GB of free space for source and build outputs, and `qemu-system-aarch64` plus AArch64 UEFI firmware for running the result. The runner auto-detects common monolithic firmware paths and AAVMF/EDK2 code-vars pairs. Set `UEFI_FIRMWARE` for a single-file image, or set both `UEFI_CODE` and `UEFI_VARS` for a split pflash installation.
 
 ## Build
 
-```bash
-# 1. Make scripts executable
-chmod +x scripts/*.sh
+On FreeBSD/arm64, `build.sh` automatically builds `jusit-init` before starting the OS build. On FreeBSD/amd64, cross-build it with a suitable sysroot first; `build.sh` stops early if the binary is missing:
 
-# 2. (Skip if on FreeBSD arm64 natively) Build the init binary
-./scripts/build_init.sh
+```sh
+# Required on a cross-build host before running build.sh.
+JUSIT_SYSROOT=/path/to/freebsd-14.2-arm64-sysroot ./scripts/build_init.sh
 
-# 3. Build everything (clones freebsd-src, builds kernel + world, packs image)
-./scripts/build.sh
+# Builds FreeBSD 14.2, stages the root filesystem, and creates the image.
+sudo ./scripts/build.sh
 ```
 
-The long step is `buildkernel` (5–30 min depending on machine). The full world build is also long but only needs to happen once.
+The first run clones the FreeBSD `releng/14.2` source branch and builds the kernel and world. The raw image size is calculated from the staged root filesystem, with space reserved for the EFI partition and UFS overhead; it is no longer assumed to fit in a 256 MiB disk. To request a larger image, set `IMG_SIZE_MB` (the script rejects a size too small for the staged files).
 
-Output:
+Outputs:
 
-- `build/jusitos-0.0.1.img` — bootable raw disk image (256 MB)
-- `build/rootfs/` — populated rootfs tree (for inspection / debugging)
-- `build/jusit-init` — the splash/init binary
+- `build/jusitos-0.0.1.img` — raw GPT disk image, with a FAT EFI System Partition and UFS root.
+- `build/rootfs/` — staged root filesystem for inspection.
+- `build/jusit-init` — the AArch64 init executable installed into the image.
 
-## Run
+## Run in QEMU
 
-```bash
-# Launch with display window (you'll see the splash screen appear)
-./scripts/run_qemu.sh
+The boot path uses AArch64 UEFI firmware and the standard removable-media loader path. The ESP contains FreeBSD's `boot/loader.efi` as `EFI/BOOT/BOOTAA64.EFI` and `EFI/FreeBSD/loader.env` with `rootdev=disk0p2`; `loader.efi` reads that setting before it can load `loader.conf` from UFS. The UFS root is GPT partition 2 and appears as `/dev/vtbd0p2` with the runner's PCI virtio disk. Once it reaches UFS, `boot/loader.conf` supplies `vfs.root.mountfrom`. QEMU's `ramfb` device exposes the UEFI GOP framebuffer in the BGRx layout init expects; `--headless` turns off host display output but keeps `ramfb` attached.
 
-# Or headless for CI / batch tests
+```sh
+# Single-file firmware example; auto-detection also checks common locations.
+UEFI_FIRMWARE=/usr/share/qemu-efi-aarch64/QEMU_EFI.fd ./scripts/run_qemu.sh
+
+# Split AAVMF firmware example (the vars template is copied to a temporary file).
+UEFI_CODE=/usr/share/AAVMF/AAVMF_CODE.fd \
+UEFI_VARS=/usr/share/AAVMF/AAVMF_VARS.fd ./scripts/run_qemu.sh --headless
+
+# Headless serial output, or start paused with the GDB stub.
 ./scripts/run_qemu.sh --headless
-
-# Or with GDB stub for kernel debugging
 ./scripts/run_qemu.sh --debug
 ```
 
-You should see:
-
-1. QEMU opens a window.
-2. UEFI firmware (if you have OVMF) or direct kernel boot loads.
-3. FreeBSD kernel boot messages scroll on serial (stdout).
-4. The kernel hands off to `/sbin/init` → our `jusit-init` binary.
-5. The framebuffer fills with the JusITOS splash screen.
-6. Pressing a key echoes that key at the bottom of the screen.
-7. Ctrl+D triggers clean poweroff.
-
----
+The runner requires `qemu-system-aarch64` and valid AArch64 UEFI firmware; it stops with an error rather than silently attempting a non-UEFI boot. For split pflash firmware, it uses a temporary copy of the variable-store template and leaves the system template untouched. Expect firmware and kernel boot messages on the serial console, followed by the JusITOS init behavior described above. The source/image changes in this update have been exercised with mocked host tools, but an end-to-end FreeBSD guest boot has not yet been run.
 
 ## Project structure
 
-```
+```text
 JusITOS/
-├── README.md                          ← you are here
+├── README.md
 ├── src/
-│   ├── sys/arm64/conf/JusITOS-ARM64   ← custom kernel config
-│   ├── init/jusit_init.c              ← splash + init program
-│   └── devtree/jusit-virt.dts         ← device tree fragment
+│   ├── sys/arm64/conf/JusITOS-ARM64
+│   ├── init/jusit_init.c
+│   └── devtree/jusit-virt.dts
 ├── scripts/
-│   ├── build.sh                       ← clone + build kernel + world + image
-│   ├── build_init.sh                  ← cross-compile the init binary
-│   └── run_qemu.sh                    ← launch in QEMU
-├── rootfs/                            ← populated by build script
-├── build/                             ← build outputs (freebsd-src clone, obj, image)
-└── docs/
-    └── ROADMAP.md                     ← milestones M1 → M5+
+│   ├── build.sh
+│   ├── build_init.sh
+│   └── run_qemu.sh
+├── rootfs/
+├── build/
+└── docs/ROADMAP.md
 ```
-
----
 
 ## Roadmap
 
-### ✅ v0.0.1 — "It boots and shows something"
-- Custom stripped FreeBSD arm64 kernel
-- Splash screen on framebuffer
-- Keyboard input echo
-- QEMU virt target
-
-### 🔜 v0.0.2 — "It loads a game"
-- Add `/games/` partition
-- Init binary gains a game-loader: scan `/games/`, list on screen, run selection
-- Refactor init into a launcher shell (still pixel-only output)
-
-### 🔜 v0.0.3 — "Gamepad input"
-- Write `jusitkbd` driver for USB HID gamepads (no event device, just custom ioctl)
-- Replace keyboard echo with button-press echo
-
-### 🔜 v0.0.4 — "Audio"
-- Enable `snd_*` drivers in kernel config
-- Expose a simple `/dev/jusit-snd` PCM device
-- Init plays a startup chime
-
-### 🔜 v0.0.5 — "GPU"
-- Bring in `drm-kmod` (virtio-gpu)
-- Add a tiny software-rendering 2D API on top of framebuffer + GPU 2D blits
-
-### 🔜 v0.1.0 — "Real graphics API"
-- Pick a path: software OpenGL (Mesa swrast) or minimal Vulkan loader
-- Game-side API spec for v1.0
-
----
-
-## Known limitations of 0.0.1
-
-1. **The init binary uses 5×7 hand-rolled font** — minimal ASCII only. Will be replaced with a proper font in 0.0.2.
-2. **`reboot(RB_POWEROFF)` syscall constant may need adjusting** for FreeBSD arm64 — check `/usr/include/sys/reboot.h` on your build host and update if needed.
-3. **QEMU framebuffer geometry is hardcoded to 640×480 in the DT fragment** but the init binary queries it at runtime, so this is safe.
-4. **No secure boot / signed games** — anyone who can write to the disk can replace the init binary.
-5. **No real console driver** — we use `/dev/fb0` directly. vt(4) is built but not used by init in 0.0.1.
-
----
+- **v0.0.1:** bootable FreeBSD arm64 base, framebuffer splash, keyboard input.
+- **v0.0.2:** game partition and game selection/launch.
+- **v0.0.3:** USB gamepad input.
+- **v0.0.4:** audio.
+- **v0.0.5:** accelerated graphics.
+- **v0.1.0:** graphics API and game-side specification.
 
 ## License
 
-JusITOS is licensed under the **BSD 2-Clause License**, matching FreeBSD. All FreeBSD-derived code remains under its original copyright. See `LICENSE` (to be added before public release).
-
----
-
-## Next steps for the team
-
-1. Set up a FreeBSD arm64 build host (UTM VM is fastest if you're on macOS).
-2. Run `scripts/build.sh` end-to-end once — fix any environment issues.
-3. Run `scripts/run_qemu.sh` — confirm the splash screen appears.
-4. Press a key — confirm it echoes.
-5. Report back what worked / didn't, and we'll iterate on 0.0.2.
+JusITOS is intended to use the BSD 2-Clause License, matching FreeBSD. FreeBSD-derived code remains under its original copyright. Add the project's `LICENSE` file before release.

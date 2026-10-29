@@ -21,23 +21,13 @@ makeoptions     WITH_CTF=1
 
 # ---- CPU options ----
 options         SMP                         # Symmetric multi-processor
-options         PLATFORM                    # platform bus support
 options         FDT                         # Flattened Device Tree
-options         OFW                         # Open Firmware support
-
-# ---- Console / boot ----
-options         SC_PIXEL_MODE              # syscons: support pixel (framebuffer) modes
-options         SC_TWOBLOCK_SCROLL          # smoother scroll
-options         VIDEOMODE_DEFAULT=24        # 24bpp framebuffer where available
 
 # ---- Memory model ----
 options         IOMMU                      # IOMMU support (for virtio on QEMU)
-options         PMAP_HAS_KMI               # kernel mappings invokable
-options         VM_NUMA                    # NUMA awareness (cheap on single-die)
 
 # ---- Filesystems (only what a console needs) ----
 options         FFS                        # UFS root filesystem
-options         FFS_ROOT                   # boot from UFS root
 options         MSDOSFS                    # FAT (for EFI System Partition / SD)
 options         CD9660                     # ISO9660 (game distribution media)
 options         TMPFS                      # in-memory scratch fs
@@ -59,7 +49,6 @@ device          null
 device          zero
 device          random                     # /dev/random, /dev/urandom
 device          md                         # memory disk
-device          fdt                        # Flattened Device Tree pseudo-dev
 
 # ---- VT console (framebuffer text mode) ----
 device          vt                         # new vt(4) console (preferred)
@@ -68,9 +57,6 @@ device          kbdmux                     # keyboard multiplexer
 # ---- Input devices ----
 device          ukbd                       # USB keyboard
 device          ums                        # USB mouse (future: cursor)
-device          atkbdc                     # atkbd controller (for emulated kbd on QEMU)
-device          atkbd                      # AT keyboard
-device          psm                        # PS/2 mouse
 
 # ---- USB (real gamepad support later) ----
 device          xhci                       # USB 3.0 host controller
@@ -88,15 +74,16 @@ device          cd                         # CD-ROM
 device          pass                       # SCSI pass-through
 
 # ---- PCI / virtio (essential for QEMU) ----
+device          acpi                       # QEMU virt ACPI device discovery
+device          acpi_ged                   # QEMU ACPI generic event device
 device          pci                        # PCI bus
 device          pci_host_generic           # generic PCI host controller
 device          virtio                     # VirtIO core
 device          virtio_pci                 # VirtIO over PCI
 device          virtio_blk                 # VirtIO block device
-device          virtio_net                 # VirtIO net
+device          vtnet                      # VirtIO network interface
 device          virtio_random              # VirtIO RNG
 device          virtio_console             # VirtIO console
-device          vtpci                      # virtio-pci glue
 
 # ---- ARM-specific: generic platform / interrupt controller / timer ----
 device          gic                        # GIC v2/v3 interrupt controller
@@ -105,9 +92,9 @@ device          pmu                        # Performance Monitoring Unit
 device          pl011                      # PL011 UART (QEMU virt default serial)
 device          pl031                      # RTC
 
-# ---- Framebuffer: simplefb on QEMU virt ----
-device          simplefb                   # simple framebuffer driver
-device          fb                         # /dev/fb* generic framebuffer
+# ---- VT framebuffer drivers used by the UEFI boot path ----
+device          vt_efifb                   # UEFI GOP framebuffer
+device          vt_simplefb                # Device-tree simple framebuffer
 
 # ---- Crypto (cheap, useful later for signed games) ----
 options         GEOM_BDE                   # block-device encryption
