@@ -13,6 +13,7 @@
 # ==========================================================================
 
 include         "std.arm64"
+cpu             ARM64
 ident           JusITOS-ARM64
 
 # ---- Machine architecture ----
