@@ -46,9 +46,6 @@ device          bpf                        # BPF (libpcap-style debugging if nee
 # deliberately NOT including: IPFIREWALL, IPSEC, ROUTETABLES, etc.
 
 # ---- Pseudo-devices ----
-device          null
-device          zero
-device          random                     # /dev/random, /dev/urandom
 device          md                         # memory disk
 
 # ---- VT console (framebuffer text mode) ----
@@ -64,7 +61,6 @@ device          xhci                       # USB 3.0 host controller
 device          ehci                       # USB 2.0
 device          ohci                       # USB 1.1
 device          usb                        # USB bus
-device          uhub                       # USB hub
 
 # ---- Storage ----
 device          ahci                       # SATA
@@ -78,7 +74,6 @@ device          pass                       # SCSI pass-through
 device          acpi                       # QEMU virt ACPI device discovery
 device          acpi_ged                   # QEMU ACPI generic event device
 device          pci                        # PCI bus
-device          pci_host_generic           # generic PCI host controller
 device          virtio                     # VirtIO core
 device          virtio_pci                 # VirtIO over PCI
 device          virtio_blk                 # VirtIO block device
@@ -86,10 +81,8 @@ device          vtnet                      # VirtIO network interface
 device          virtio_random              # VirtIO RNG
 device          virtio_console             # VirtIO console
 
-# ---- ARM-specific: generic platform / interrupt controller / timer ----
-device          gic                        # GIC v2/v3 interrupt controller
-device          gtimer                     # ARM Generic Timer
-device          pmu                        # Performance Monitoring Unit
+# ---- ARM-specific platform devices ----
+# GIC, generic timer, and PMU support are compiled in for ARM64.
 device          pl011                      # PL011 UART (QEMU virt default serial)
 device          pl031                      # RTC
 
