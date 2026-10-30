@@ -1,4 +1,5 @@
 #include "pl011.h"
+#include <stddef.h>
 
 #define PL011_BASE        0x09000000UL
 #define PL011_DR          (*(volatile unsigned int *)(PL011_BASE + 0x000U))
