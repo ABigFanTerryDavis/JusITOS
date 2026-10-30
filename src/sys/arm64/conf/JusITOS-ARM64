@@ -83,6 +83,7 @@ device          virtio_console             # VirtIO console
 
 # ---- ARM-specific platform devices ----
 # GIC, generic timer, and PMU support are compiled in for ARM64.
+device          gpio                       # GPIO framework used by platform drivers
 device          pl011                      # PL011 UART (QEMU virt default serial)
 device          pl031                      # RTC
 

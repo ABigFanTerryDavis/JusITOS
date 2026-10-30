@@ -45,7 +45,7 @@ jobs:
           run: |
             set -eu
             build_root="$(mktemp -d /tmp/jusitos-ci.XXXXXX)"
-            trap 'rm -rf "$build_root"' EXIT HUP INT TERM
+            trap 'chflags -R noschg,nouchg "$build_root" 2>/dev/null || true; rm -rf "$build_root"' EXIT HUP INT TERM
             project="$build_root/JusITOS"
             mkdir -p "$project"
             tar -C "$GITHUB_WORKSPACE" --exclude=.git --exclude=ci-artifacts -cf - . | tar -C "$project" -xf -
