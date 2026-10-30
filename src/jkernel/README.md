@@ -10,7 +10,7 @@ The input buffer holds up to 127 characters plus a terminator. If a line overflo
 
 For now, `zesh` runs inside the kernel; it is not a user process. This milestone does not include COIO, user mode or system calls, a device-tree parser, virtual memory, exception handling, interrupts or the GIC, storage, or a scheduler.
 
-The earlier banner-only jkernel milestone was built and directly booted under QEMU. The current zesh-integrated milestone has not yet been built or booted, so its interactive input path is not verified.
+The integrated zesh milestone has been built and passed a single-core QEMU serial smoke test. The test printed the kernel banner and prompt, and `help` and `version` returned their expected responses. This verifies the interactive PL011 path in QEMU; it does not make `zesh` a user process or test a COIO boot.
 
 ## Build
 
@@ -22,12 +22,12 @@ make -C src/jkernel CROSS_COMPILE=aarch64-linux-gnu-
 
 The ELF output is `build/jkernel/jkernel.elf`, outside the FreeBSD prototype's named image and source outputs. Run `make -C src/jkernel clean` to remove only that dedicated output directory.
 
-## Proposed QEMU smoke test
+## Single-core QEMU smoke test
 
-After the current source review is complete and any requested fixes are made, the kernel can be built and tested directly on QEMU's single-core `virt` machine:
+The following command was used to build and test the integrated milestone directly on QEMU's single-core `virt` machine. It prints the jkernel banner and starts the `zesh>` prompt; `help` and `version` both responded in the smoke test.
 
 ```sh
-make -C src/jkernel
+make -C src/jkernel CROSS_COMPILE=aarch64-linux-gnu-
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
   -cpu cortex-a57 -smp 1 -m 2048 \
@@ -35,4 +35,4 @@ qemu-system-aarch64 \
   -kernel build/jkernel/jkernel.elf
 ```
 
-This is the proposed next check, not a claim that milestone 0.2 has built or booted. The existing `scripts/run_qemu.sh` launches the separate FreeBSD disk image and is not the jkernel runner.
+This tests direct kernel loading through QEMU's `-kernel` option, not a COIO boot or a physical device. The existing `scripts/run_qemu.sh` launches the separate FreeBSD disk image and is not the jkernel runner.
