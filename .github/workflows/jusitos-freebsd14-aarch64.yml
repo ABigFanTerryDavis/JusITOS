@@ -68,10 +68,11 @@ jobs:
             tar -xpf "$build_root/base.txz" -C "$sysroot"
             JUSIT_SYSROOT="$sysroot" "$project/scripts/build_init.sh"
 
+            # The QEMU virt image uses built-in drivers; skip unrelated modules.
             if [ "$(id -u)" -eq 0 ]; then
-              JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
+              NO_MODULES=yes JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
             else
-              sudo -n env JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
+              sudo -n env NO_MODULES=yes JOBS=2 JUSIT_LOADER_CONSOLE=comconsole "$project/scripts/build.sh"
             fi
             test -s "$project/build/jusitos-0.0.1.img"
             mkdir -p "$GITHUB_WORKSPACE/ci-artifacts"
