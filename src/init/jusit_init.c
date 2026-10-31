@@ -24,9 +24,12 @@
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/mount.h>
 #include <sys/mman.h>
 #include <sys/fbio.h>
+#include <sys/stat.h>
 #include <sys/reboot.h>
+#include <sys/uio.h>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -163,6 +166,40 @@ console_open(void)
     cfmakeraw(&term);
     if (tcsetattr(STDIN_FILENO, TCSANOW, &term) < 0)
         die("tcsetattr /dev/console");
+}
+
+static void
+devfs_mount_if_needed(void)
+{
+    struct stat root_stat;
+    struct stat dev_stat;
+
+    if (stat("/", &root_stat) < 0)
+        die("stat /");
+    if (stat("/dev", &dev_stat) < 0)
+        die("stat /dev");
+
+    /* FreeBSD's stock init mounts devfs before running /etc/rc. This custom
+     * PID 1 replaces it, so mount devfs here unless the loader already did. */
+    if (root_stat.st_dev == dev_stat.st_dev) {
+        struct iovec options[4];
+        char fstype_key[] = "fstype";
+        char fstype_value[] = "devfs";
+        char fspath_key[] = "fspath";
+        char fspath_value[] = "/dev";
+
+        options[0].iov_base = fstype_key;
+        options[0].iov_len = sizeof(fstype_key);
+        options[1].iov_base = fstype_value;
+        options[1].iov_len = sizeof(fstype_value);
+        options[2].iov_base = fspath_key;
+        options[2].iov_len = sizeof(fspath_key);
+        options[3].iov_base = fspath_value;
+        options[3].iov_len = sizeof(fspath_value);
+
+        if (nmount(options, 4, 0) < 0)
+            die("mount devfs on /dev");
+    }
 }
 
 static int
@@ -341,6 +378,7 @@ splash_screen(void)
 int
 main(void)
 {
+    devfs_mount_if_needed();
     console_open();
     dprintf(STDERR_FILENO, "[JusITOS] INIT_REACHED\n");
     int framebuffer_available = (fb_open() == 0);

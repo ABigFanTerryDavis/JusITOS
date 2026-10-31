@@ -7,7 +7,7 @@ BUILD_DIR ?= $(PROJECT_ROOT)/build/jkernel
 ELF := $(BUILD_DIR)/jkernel.elf
 
 CFLAGS := -std=c11 -O2 -Wall -Wextra -Werror \
-          -mcpu=cortex-a57 -ffreestanding -fno-builtin \
+          -mcpu=cortex-a57 -mgeneral-regs-only -ffreestanding -fno-builtin \
           -fno-stack-protector -fno-pic -fno-pie \
           -fno-unwind-tables -fno-asynchronous-unwind-tables
 LDFLAGS := -nostdlib -static -no-pie \
@@ -15,13 +15,19 @@ LDFLAGS := -nostdlib -static -no-pie \
            -Wl,--build-id=none
 
 SOURCES := $(MAKEFILE_DIR)/start.S $(MAKEFILE_DIR)/kernel.c \
-           $(MAKEFILE_DIR)/pl011.c $(MAKEFILE_DIR)/zesh.c
+           $(MAKEFILE_DIR)/pl011.c $(MAKEFILE_DIR)/zesh.c \
+           $(MAKEFILE_DIR)/fdt.c $(MAKEFILE_DIR)/fw_cfg.c \
+           $(MAKEFILE_DIR)/display.c $(MAKEFILE_DIR)/virtio_input.c \
+           $(MAKEFILE_DIR)/ui.c
 
 .PHONY: all clean
 all: $(ELF)
 
 $(ELF): $(SOURCES) $(MAKEFILE_DIR)/linker.ld \
-	    $(MAKEFILE_DIR)/pl011.h $(MAKEFILE_DIR)/zesh.h
+	    $(MAKEFILE_DIR)/pl011.h $(MAKEFILE_DIR)/zesh.h \
+	    $(MAKEFILE_DIR)/fdt.h $(MAKEFILE_DIR)/fw_cfg.h \
+	    $(MAKEFILE_DIR)/display.h $(MAKEFILE_DIR)/virtio_input.h \
+	    $(MAKEFILE_DIR)/ui.h
 	mkdir -p "$(BUILD_DIR)"
 	$(CC) $(CFLAGS) $(LDFLAGS) -o "$@" $(SOURCES)
 

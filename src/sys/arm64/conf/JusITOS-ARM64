@@ -53,6 +53,7 @@ device          vt                         # new vt(4) console (preferred)
 device          kbdmux                     # keyboard multiplexer
 
 # ---- Input devices ----
+device          hid                        # HID core required by USB input drivers
 device          ukbd                       # USB keyboard
 device          ums                        # USB mouse (future: cursor)
 

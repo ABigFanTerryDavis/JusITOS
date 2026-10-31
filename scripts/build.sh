@@ -169,6 +169,7 @@ fi
 
 # ---- Step 5 — pack the UEFI-bootable GPT image ----
 echo "[6/6] packing GPT/UEFI image (${IMG_SIZE_MB} MiB) ..."
+rm -f "$IMG_FILE"
 truncate -s "${IMG_SIZE_MB}M" "$IMG_FILE"
 MD_UNIT=""
 ROOT_MOUNTPOINT=""

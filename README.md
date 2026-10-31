@@ -15,7 +15,7 @@ A FreeBSD-derived ARM64 game-console OS prototype. The intended v0.0.1 experienc
 | QEMU launcher | Arguments mock-tested; guest boot unverified | `scripts/run_qemu.sh` |
 | Device-tree fragment | Informational; not passed by the runner | `src/devtree/jusit-virt.dts` |
 
-The splash supports a narrow UEFI framebuffer target: init requires `FBTYPE_EFIFB` at 32-bit depth, reads the scanline width with `FBIO_GETLINEWIDTH`, and queries RGB shifts with `FBIO_GETRGBOFFS` on `/dev/ttyv0`. The current pixel layout must report R=16, G=8, and B=0; other framebuffer types, depths, or channel layouts are not supported. When the EFI framebuffer is missing or unsupported, init falls back to `/dev/console`, the system-selected console, which may be serial. As PID 1, init opens `/dev/console` on file descriptors 0, 1, and 2 in raw mode. Ctrl+D is the byte `0x04` and requests poweroff with `RB_POWEROFF`. The font fallback and glyphs are visible when rendered.
+The splash supports a narrow UEFI framebuffer target: init requires `FBTYPE_EFIFB` at 32-bit depth, reads the scanline width with `FBIO_GETLINEWIDTH`, and queries RGB shifts with `FBIO_GETRGBOFFS` on `/dev/ttyv0`. The current pixel layout must report R=16, G=8, and B=0; other framebuffer types, depths, or channel layouts are not supported. When the EFI framebuffer is missing or unsupported, init falls back to `/dev/console`, the system-selected console, which may be serial. As PID 1, init ensures devfs is mounted, then opens `/dev/console` on file descriptors 0, 1, and 2 in raw mode. Ctrl+D is the byte `0x04` and requests poweroff with `RB_POWEROFF`. The font fallback and glyphs are visible when rendered.
 
 ## Build host and prerequisites
 
@@ -70,6 +70,9 @@ The runner requires `qemu-system-aarch64` and valid AArch64 UEFI firmware; it st
 JusITOS/
 ├── README.md
 ├── src/
+│   ├── coio/                  # C UEFI kernel-loader experiment
+│   ├── coio-rust/             # no_std Rust UEFI GOP experiment
+│   ├── jkernel/               # independent direct-QEMU kernel experiment
 │   ├── sys/arm64/conf/JusITOS-ARM64
 │   ├── init/jusit_init.c
 │   └── devtree/jusit-virt.dts

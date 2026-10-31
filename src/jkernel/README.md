@@ -1,38 +1,38 @@
-# jkernel milestone 0.2: zesh serial monitor
+# jkernel milestone 0.3: ramfb display and zesh serial monitor
 
-This directory is an independent freestanding AArch64 kernel experiment for QEMU's `virt` machine. It does not replace or modify the FreeBSD 14.2 prototype, and it is not wired into the existing FreeBSD build or QEMU scripts.
+`src/jkernel/` is an independent freestanding AArch64 kernel experiment for QEMU's `virt` machine. It does not replace or modify the FreeBSD 14.2 prototype and is not wired into the FreeBSD build or its QEMU scripts.
 
 ## Current scope
 
-The kernel enters at `_start`, establishes a private stack, initializes QEMU `virt`'s PL011 UART, and runs `zesh` as a small in-kernel serial bring-up monitor. The monitor polls a nonblocking character-input callback and keeps its line state between calls. It prints a `zesh>` prompt, echoes printable input, supports Backspace and DEL editing, and accepts CR or LF as Enter. Its built-in commands are `help` and `version` (`zesh 0.1`).
+The kernel enters at `_start`, establishes a private stack, and keeps the existing PL011-backed `zesh>` serial monitor. `zesh` polls a nonblocking character-input callback, echoes printable input, supports Backspace and DEL, accepts CR or LF as Enter, and provides `help` and `version`. Its line buffer holds up to 127 characters plus a terminator; an overlong command is discarded rather than running a prefix. `zesh` remains an in-kernel monitor, not a user process.
 
-The input buffer holds up to 127 characters plus a terminator. If a line overflows, `zesh` rings the bell, discards the entire line on Enter, and does not run the buffered prefix. The callback interface keeps the monitor's line handling separate from the PL011 driver, so it can later move into Jusland if user mode and system calls are added.
+The first display slice parses the QEMU-provided FDT to locate `qemu,fw-cfg-mmio`, checks fw_cfg's signature and DMA feature, finds the `etc/ramfb` file entry, and configures QEMU ramfb through a fw_cfg DMA write. The screen is a statically allocated 640x480 XRGB8888 framebuffer drawn entirely in software: color bars, a dark console panel, and a small bitmap-font status display.
 
-For now, `zesh` runs inside the kernel; it is not a user process. This milestone does not include COIO, user mode or system calls, a device-tree parser, virtual memory, exception handling, interrupts or the GIC, storage, or a scheduler.
+This direct-boot path uses QEMU 8.2.2's AArch64 ELF boot behavior: the generated DTB is placed at RAM base `0x40000000` only if it fits below the first ELF load address. The linker starts the first `PT_LOAD` at `0x40200000`, leaving 2 MiB for the DTB. `start.S` repurposes `x0`, so the kernel intentionally does not depend on an `x0` DTB pointer. The FDT helper has no independent blob-length argument; the caller must ensure the pointer spans the total size in the FDT header. These assumptions are specific to QEMU 8.2.2 direct-ELF boot, not a general boot protocol.
 
-The integrated zesh milestone has been built and passed a single-core QEMU serial smoke test. The test printed the kernel banner and prompt, and `help` and `version` returned their expected responses. This verifies the interactive PL011 path in QEMU; it does not make `zesh` a user process or test a COIO boot.
+The 640x480 display, UI cursor, polled VirtIO tablet input, and serial shell passed a QEMU 8.2.2 GTK smoke test. The kernel reads normalized pointer snapshots and redraws the UI when pointer or button state changes. This verifies the QEMU sandbox path only; physical hardware has not been tested. Controller passthrough, accelerated graphics, a general graphics API, virtual memory, interrupts, storage, and scheduling are not included.
 
 ## Build
 
-Use an AArch64 freestanding GCC toolchain (the default command is `aarch64-none-elf-gcc`). For a differently prefixed cross-compiler, set `CROSS_COMPILE`, for example:
+Use an AArch64 freestanding GCC toolchain (the default is `aarch64-none-elf-gcc`). For a differently prefixed cross-compiler, set `CROSS_COMPILE`, for example:
 
 ```sh
 make -C src/jkernel CROSS_COMPILE=aarch64-linux-gnu-
 ```
 
-The ELF output is `build/jkernel/jkernel.elf`, outside the FreeBSD prototype's named image and source outputs. Run `make -C src/jkernel clean` to remove only that dedicated output directory.
+The ELF output is `build/jkernel/jkernel.elf`, outside the FreeBSD prototype's named image and source outputs. `make -C src/jkernel clean` removes only that dedicated output directory.
 
-## Single-core QEMU smoke test
+## QEMU launch
 
-The following command was used to build and test the integrated milestone directly on QEMU's single-core `virt` machine. It prints the jkernel banner and starts the `zesh>` prompt; `help` and `version` both responded in the smoke test.
+The display-enabled direct-boot command includes `virtio-tablet-device` so the polled input driver can discover QEMU's tablet among the VirtIO-MMIO transports:
 
 ```sh
-make -C src/jkernel CROSS_COMPILE=aarch64-linux-gnu-
 qemu-system-aarch64 \
   -machine virt,gic-version=3 \
   -cpu cortex-a57 -smp 1 -m 2048 \
-  -display none -serial stdio \
+  -global virtio-mmio.force-legacy=false \
+  -display gtk -device ramfb -device virtio-tablet-device -serial stdio \
   -kernel build/jkernel/jkernel.elf
 ```
 
-This tests direct kernel loading through QEMU's `-kernel` option, not a COIO boot or a physical device. The existing `scripts/run_qemu.sh` launches the separate FreeBSD disk image and is not the jkernel runner.
+The `force-legacy=false` setting selects the modern VirtIO-MMIO version 2 transport required by the tablet driver; QEMU 8.2.2 defaults this property to legacy mode. The visible smoke test confirmed the 640x480 UI, cursor movement, left-button state, and serial `help`/`version` responses. QEMU emitted a missing `vgabios-ramfb.bin` warning, but it did not prevent the fw_cfg ramfb display from working. Use `-display none` instead of `-display gtk` for a headless run; ramfb remains attached, but its pixels will not be shown in a host window. This is separate from `scripts/run_qemu.sh`, which launches the FreeBSD disk image.

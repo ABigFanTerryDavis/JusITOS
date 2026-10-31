@@ -148,7 +148,7 @@ fi
     -device usb-kbd,bus=xhci.0 \
     -device usb-mouse,bus=xhci.0 \
     -device virtio-net-pci,netdev=net0 \
-    -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 \
     -device virtio-rng-pci \
     -rtc base=utc \
     -no-reboot
